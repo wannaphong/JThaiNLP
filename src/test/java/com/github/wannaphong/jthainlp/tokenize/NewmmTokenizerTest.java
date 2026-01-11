@@ -83,4 +83,70 @@ public class NewmmTokenizerTest {
         // With whitespace should have more or equal tokens
         assertTrue(tokensWithSpace.size() >= tokensWithoutSpace.size());
     }
+    
+    /**
+     * Comprehensive newmm tests from PyThaiNLP to ensure compatibility.
+     */
+    @Test
+    public void testNewmmComprehensive() {
+        // Test null and empty inputs
+        List<String> nullResult = Tokenize.wordTokenize(null, null, "newmm", false);
+        assertEquals(Arrays.asList(), nullResult);
+        
+        List<String> emptyResult = Tokenize.wordTokenize("", null, "newmm", false);
+        assertEquals(Arrays.asList(), emptyResult);
+        
+        // Test basic Thai text tokenization
+        List<String> result1 = Tokenize.wordTokenize("ฉันรักภาษาไทยเพราะฉันเป็นคนไทย", null, "newmm", false);
+        assertEquals(Arrays.asList("ฉัน", "รัก", "ภาษาไทย", "เพราะ", "ฉัน", "เป็น", "คนไทย"), result1);
+        
+        // Test numeric patterns with dots
+        List<String> result2 = Tokenize.wordTokenize("19...", null, "newmm", false);
+        assertEquals(Arrays.asList("19", "..."), result2);
+        
+        List<String> result3 = Tokenize.wordTokenize("19.", null, "newmm", false);
+        assertEquals(Arrays.asList("19", "."), result3);
+        
+        List<String> result4 = Tokenize.wordTokenize("19.84", null, "newmm", false);
+        assertEquals(Arrays.asList("19.84"), result4);
+        
+        // Test IP address
+        List<String> result5 = Tokenize.wordTokenize("127.0.0.1", null, "newmm", false);
+        assertEquals(Arrays.asList("127.0.0.1"), result5);
+        
+        // Test currency format
+        List<String> result6 = Tokenize.wordTokenize("USD1,984.42", null, "newmm", false);
+        assertEquals(Arrays.asList("USD", "1,984.42"), result6);
+        
+        // Test whitespace handling with keep_whitespace=true
+        List<String> result7 = Tokenize.wordTokenize("สวัสดีครับ สบายดีไหมครับ", null, "newmm", true);
+        assertEquals(Arrays.asList("สวัสดี", "ครับ", " ", "สบายดี", "ไหม", "ครับ"), result7);
+        
+        // Test specific Thai words
+        List<String> result8 = Tokenize.wordTokenize("จุ๋มง่วงนอนยัง", null, "newmm", false);
+        assertEquals(Arrays.asList("จุ๋ม", "ง่วงนอน", "ยัง"), result8);
+        
+        List<String> result9 = Tokenize.wordTokenize("จุ๋มง่วง", null, "newmm", false);
+        assertEquals(Arrays.asList("จุ๋ม", "ง่วง"), result9);
+        
+        // Test multiple spaces with keep_whitespace=false
+        List<String> result10 = Tokenize.wordTokenize("จุ๋ม   ง่วง", null, "newmm", false);
+        assertEquals(Arrays.asList("จุ๋ม", "ง่วง"), result10);
+        
+        // Test that whitespace is not in output when keep_whitespace=false
+        List<String> result11 = Tokenize.wordTokenize("จุ๋มง่วง", null, "newmm", false);
+        assertFalse(result11.contains(" "));
+        
+        // Test parentheses
+        List<String> result12 = Tokenize.wordTokenize("(คนไม่เอา)", null, "newmm", false);
+        assertEquals(Arrays.asList("(", "คน", "ไม่", "เอา", ")"), result12);
+        
+        // Test slash
+        List<String> result13 = Tokenize.wordTokenize("กม/ชม", null, "newmm", false);
+        assertEquals(Arrays.asList("กม", "/", "ชม"), result13);
+        
+        // Test mixed Thai and parentheses
+        List<String> result14 = Tokenize.wordTokenize("สีหน้า(รถ)", null, "newmm", false);
+        assertEquals(Arrays.asList("สีหน้า", "(", "รถ", ")"), result14);
+    }
 }
