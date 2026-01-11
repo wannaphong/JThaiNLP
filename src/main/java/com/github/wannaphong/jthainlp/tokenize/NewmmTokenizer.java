@@ -26,9 +26,6 @@ public class NewmmTokenizer {
     // Pattern for 2-consonant Thai tokens
     private static final Pattern THAI_TWO_CHARS_PATTERN = Pattern.compile("[ก-ฮ]{1,2}");
     
-    // Maximum graph size before cutoff to avoid exponential time
-    private static final int MAX_GRAPH_SIZE = 50;
-    
     /**
      * Creates a newmm tokenizer with the given dictionary.
      * 
@@ -56,104 +53,84 @@ public class NewmmTokenizer {
      * Internal tokenization method implementing the newmm algorithm.
      */
     private List<String> onecut(String text) {
-        // Graph structure: key is start position, value is list of possible end positions
-        Map<Integer, List<Integer>> graph = new HashMap<>();
+        int textLength = text.length();
+        if (textLength == 0) {
+            return new ArrayList<>();
+        }
         
-        int graphSize = 0;
         Set<Integer> validPositions = ThaiCharacterCluster.getTccPositions(text);
         
-        int textLength = text.length();
-        PriorityQueue<Integer> positionQueue = new PriorityQueue<>();
-        positionQueue.add(0);
+        // Build word graph: for each position, find all possible words starting there
+        Map<Integer, List<Integer>> graph = new HashMap<>();
         
-        int endPos = 0;
-        List<String> result = new ArrayList<>();
-        
-        while (!positionQueue.isEmpty() && positionQueue.peek() < textLength) {
-            int beginPos = positionQueue.poll();
+        for (int i = 0; i < textLength; i++) {
+            if (i > 0 && !validPositions.contains(i)) {
+                continue; // Can only start words at TCC boundaries
+            }
             
-            // Find all possible words starting at beginPos
-            String remaining = text.substring(beginPos);
-            List<String> prefixes = dictionary.prefixes(remaining);
+            String remaining = text.substring(i);
+            List<String> words = dictionary.prefixes(remaining);
             
-            for (String word : prefixes) {
-                int endPosCandidate = beginPos + word.length();
-                if (validPositions.contains(endPosCandidate)) {
-                    graph.computeIfAbsent(beginPos, k -> new ArrayList<>()).add(endPosCandidate);
-                    graphSize++;
-                    
-                    if (!positionQueue.contains(endPosCandidate)) {
-                        positionQueue.add(endPosCandidate);
+            if (!words.isEmpty()) {
+                List<Integer> edges = new ArrayList<>();
+                for (String word : words) {
+                    int endPos = i + word.length();
+                    if (validPositions.contains(endPos)) {
+                        edges.add(endPos);
                     }
-                    
-                    if (graphSize > MAX_GRAPH_SIZE) {
-                        break;
-                    }
+                }
+                if (!edges.isEmpty()) {
+                    graph.put(i, edges);
                 }
             }
             
-            // Check if we have a single unambiguous path
-            if (positionQueue.size() == 1) {
-                int nextPos = positionQueue.peek();
-                List<Integer> path = findPath(graph, endPos, nextPos);
-                graphSize = 0;
-                
-                for (int i = 1; i < path.size(); i++) {
-                    int start = path.get(i - 1);
-                    int end = path.get(i);
-                    result.add(text.substring(start, end));
-                    endPos = end;
-                }
-            } else if (positionQueue.isEmpty()) {
-                // No candidate found, handle non-dictionary word
-                Matcher matcher = NON_THAI_PATTERN.matcher(text.substring(beginPos));
+            // Also add edges for non-Thai tokens
+            Matcher matcher = NON_THAI_PATTERN.matcher(remaining);
+            if (matcher.lookingAt()) {
+                int endPos = i + matcher.end();
+                graph.computeIfAbsent(i, k -> new ArrayList<>()).add(endPos);
+            }
+        }
+        
+        // Find shortest path (fewest words) using BFS
+        return findShortestPath(text, graph, validPositions);
+    }
+    
+    /**
+     * Find the shortest path (fewest tokens) through the word graph.
+     */
+    private List<String> findShortestPath(String text, Map<Integer, List<Integer>> graph, 
+                                          Set<Integer> validPositions) {
+        int textLength = text.length();
+        List<String> result = new ArrayList<>();
+        
+        int pos = 0;
+        while (pos < textLength) {
+            List<Integer> edges = graph.get(pos);
+            
+            if (edges != null && !edges.isEmpty()) {
+                // Choose the longest match (maximal matching)
+                int nextPos = Collections.max(edges);
+                result.add(text.substring(pos, nextPos));
+                pos = nextPos;
+            } else {
+                // No dictionary word found, handle unknown token
+                Matcher matcher = NON_THAI_PATTERN.matcher(text.substring(pos));
                 
                 if (matcher.lookingAt()) {
-                    // Non-Thai token
-                    endPos = beginPos + matcher.end();
+                    int endPos = pos + matcher.end();
+                    result.add(text.substring(pos, endPos));
+                    pos = endPos;
                 } else {
                     // Thai token not in dictionary, find minimum skip
-                    endPos = findMinimumSkip(text, beginPos, textLength, validPositions);
+                    int endPos = findMinimumSkip(text, pos, textLength, validPositions);
+                    result.add(text.substring(pos, endPos));
+                    pos = endPos;
                 }
-                
-                graph.computeIfAbsent(beginPos, k -> new ArrayList<>()).add(endPos);
-                graphSize++;
-                result.add(text.substring(beginPos, endPos));
-                positionQueue.add(endPos);
             }
         }
         
         return result;
-    }
-    
-    /**
-     * Finds a path through the graph from start to goal.
-     */
-    private List<Integer> findPath(Map<Integer, List<Integer>> graph, int start, int goal) {
-        Queue<List<Integer>> queue = new LinkedList<>();
-        queue.add(Collections.singletonList(start));
-        
-        while (!queue.isEmpty()) {
-            List<Integer> path = queue.poll();
-            int vertex = path.get(path.size() - 1);
-            
-            List<Integer> neighbors = graph.get(vertex);
-            if (neighbors != null) {
-                for (int pos : neighbors) {
-                    if (pos == goal) {
-                        List<Integer> newPath = new ArrayList<>(path);
-                        newPath.add(pos);
-                        return newPath;
-                    } else {
-                        List<Integer> newPath = new ArrayList<>(path);
-                        newPath.add(pos);
-                        queue.add(newPath);
-                    }
-                }
-            }
-        }
-        
-        return Collections.singletonList(start);
     }
     
     /**
